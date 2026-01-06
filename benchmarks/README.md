@@ -14,11 +14,17 @@ On macOS:
 brew install wrk
 ```
 
-## Running
+## Quick Start
 
-### Quick Start - Original Benchmarks
+### Original Benchmarks
 
-To run the original benchmarks, first install the dependencies `npm i`, then run `make`
+To run the original middleware benchmarks:
+
+```bash
+cd benchmarks
+npm install   # Install dependencies in main express directory first
+make
+```
 
 The output will look something like this:
 
@@ -34,28 +40,11 @@ The output will look something like this:
   10 middleware
  139.21ms
  6155.19
-
 ```
-
-### Comprehensive Benchmark Suite
-
-Run all benchmarks with detailed metrics and save results:
-
-```bash
-cd benchmarks
-npm install   # Install dependencies in main express directory first
-node run-all.js
-```
-
-This will:
-- Run multiple benchmark scenarios (hello-world, middleware, routing, JSON response, etc.)
-- Test with various connection counts (50, 100, 250, 500, 1000)
-- Save results to `results/` directory with timestamps
-- Generate a summary report
 
 ### Express 4 vs Express 5 Comparison
 
-To compare Express 4 and Express 5 performance:
+**Main performance comparison tool** - Compares Express 4 and Express 5 performance:
 
 ```bash
 cd benchmarks
@@ -68,41 +57,72 @@ This will:
 - Generate a comparison report showing performance differences
 - Save results to `results/comparison_TIMESTAMP.json`
 
-## Benchmark Scenarios
+#### Benchmark Scenarios
 
-The suite includes the following benchmark scenarios:
+The comparison tests:
+1. **Hello World** - Basic "Hello World" response (minimal overhead test)
+2. **1 Middleware** - Single middleware with query parsing
+3. **10 Middleware** - 10 middleware stack with query parsing
+4. **Query Parsing** - Complex query string parsing
+5. **JSON Response** - JSON serialization of complex objects
 
-1. **hello-world** - Basic "Hello World" response (minimal overhead test)
-2. **middleware-N** - Middleware stack with N middleware functions (1, 5, 10, 20)
-3. **query-parsing** - Complex query string parsing with nested objects and arrays
-4. **routing** - Routing performance with 100 defined routes
-5. **json-response** - JSON serialization of complex objects
-6. **request-parsing** - Request parameter and header parsing
+## Performance Analysis
+
+See [FINDINGS.md](FINDINGS.md) for detailed analysis of performance bottlenecks identified in Express 5:
+
+**Key Findings:**
+- Query string parsing (qs library is 6-7x slower than built-in parser)
+- Object.create(null) overhead (10x slower than {})
+- Request property lazy evaluation without caching
+- Status code validation overhead (5x slower)
+
+See [OPTIMIZATIONS.md](OPTIMIZATIONS.md) for implemented performance optimizations:
+
+**Implemented Optimizations:**
+- Request property caching (query, ip, ips, path, subdomains, host, hostname, protocol)
+- Replaced Object.create(null) with {} in query getter
+- Optimized status validation error messages
+- Replaced deprecated trimRight() with trimEnd()
+
+**Expected Impact:** 1-5% improvement for applications accessing properties multiple times
+
+## Testing on Different Node.js Versions
+
+Using nvm (Node Version Manager):
+
+```bash
+# Install Node.js 24 (if not already installed)
+nvm install 24
+
+# Test on Node 20
+nvm use 20
+cd benchmarks
+node compare-versions.js
+
+# Test on Node 24
+nvm use 24
+cd benchmarks
+node compare-versions.js
+
+# Compare results in the results/ directory
+```
 
 ## Understanding Results
 
 Results are saved in the `results/` directory:
-- Individual benchmark results: `{benchmark-name}_{connections}_TIMESTAMP.json`
-- Summary: `summary_TIMESTAMP.json`
 - Comparison: `comparison_TIMESTAMP.json`
-- All results appended to: `benchmark-summary.jsonl` (JSON Lines format)
 
 Each result includes:
 - System specifications (CPU, memory, Node.js version)
 - Benchmark configuration (connections, duration, threads)
 - Metrics (requests/sec, latency, total requests, errors)
-- Raw wrk output
+- Performance comparison between Express 4 and Express 5
 
-## Performance Monitoring
+### Key Metrics
 
-To track performance over time:
-
-1. Run benchmarks before and after changes
-2. Compare results files in `results/` directory
-3. Focus on these key metrics:
-   - **Requests/sec**: Higher is better
-   - **Latency**: Lower is better
-   - **Total requests**: Should increase with better performance
+- **Requests/sec**: Higher is better (throughput)
+- **Latency**: Lower is better (response time)
+- **Total requests**: Should increase with better performance
 
 ## Tips
 
@@ -118,86 +138,13 @@ make && node -v
 make > results.log
 ```
 
-### Run benchmarks on different Node.js versions
-
-Using nvm (Node Version Manager):
+### Quick single benchmark
 
 ```bash
-# Install Node.js 24 (if not already installed)
-nvm install 24
-
-# Test on Node 20
-nvm use 20
-cd benchmarks
-node compare-versions.js
-node micro-benchmarks.js
-
-# Test on Node 24
-nvm use 24
-cd benchmarks
-node compare-versions.js
-node micro-benchmarks.js
-
-# Compare results in the results/ directory
+./run 10 middleware.js 100
 ```
 
-Or using n (Node version manager):
-
-```bash
-# Install and use Node 24
-n 24
-cd benchmarks
-node compare-versions.js
-```
-
-### Analyze Performance Bottlenecks
-
-Run static code analysis to identify potential bottlenecks:
-
-```bash
-cd benchmarks
-node analyze-bottlenecks.js
-```
-
-This will generate a detailed analysis report in `results/analysis_TIMESTAMP.json`.
-
-### Run Micro-benchmarks
-
-Test specific operations in isolation:
-
-```bash
-cd benchmarks
-node micro-benchmarks.js
-```
-
-This runs detailed benchmarks for:
-- Query string parsing (qs vs querystring)
-- Buffer operations
-- Object creation patterns
-- Status code validation
-- JSON operations
-
-### CPU Profiling
-
-Profile Express applications to identify CPU bottlenecks:
-
-```bash
-cd benchmarks
-node profile-cpu.js
-```
-
-This generates CPU profiles in `profiles/` directory that can be analyzed in Chrome DevTools.
-
-## Results and Analysis
-
-See [FINDINGS.md](FINDINGS.md) for a detailed analysis of performance bottlenecks identified in Express 5, including:
-- Query string parsing performance (qs is 6-7x slower than built-in)
-- Object creation patterns (Object.create(null) is 10x slower than {})
-- Status code validation overhead (5x slower with strict validation)
-- Request property lazy evaluation without caching
-- Recommendations for optimization
-
-Key findings show that the main performance bottleneck is the `qs` library for query parsing, which is significantly slower than Node.js built-in `querystring.parse()`.
+This runs the middleware benchmark with 10 middleware and 100 connections.
 
 ### Quick single benchmark
 

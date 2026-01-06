@@ -2,6 +2,7 @@
 /**
  * Compare Express 4 vs Express 5 performance
  * This script installs both versions and runs benchmarks
+ * Matches benchmarks from: https://www.repoflow.io/blog/express-4-vs-express-5-benchmark-node-18-24
  */
 
 const { spawn, execSync } = require('node:child_process');
@@ -9,8 +10,42 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 
-const EXPRESS_4_VERSION = '4.21.2'; // Latest Express 4
-const EXPRESS_5_VERSION = '5.2.1'; // Current Express 5
+const EXPRESS_4_VERSION = '4.21.2'; // Latest Express 4 (article used 4.18.2, 4.22.1)
+const EXPRESS_5_VERSION = '5.2.1'; // Current Express 5 (article used 5.0.0, 5.1.0, 5.2.1)
+
+/**
+ * Generate a ~50 KB JSON payload for POST benchmarks
+ */
+function generateLargeJSONPayload() {
+  const data = {
+    timestamp: new Date().toISOString(),
+    metadata: {
+      version: '1.0',
+      source: 'benchmark',
+      user: 'test-user'
+    },
+    records: []
+  };
+  
+  // Add enough records to reach ~50 KB
+  for (let i = 0; i < 500; i++) {
+    data.records.push({
+      id: i,
+      name: `Record ${i}`,
+      email: `user${i}@example.com`,
+      description: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+      value: Math.random() * 1000,
+      active: i % 2 === 0,
+      tags: ['benchmark', 'test', 'data'],
+      metadata: {
+        created: new Date().toISOString(),
+        updated: new Date().toISOString()
+      }
+    });
+  }
+  
+  return JSON.stringify(data);
+}
 
 console.log('\n' + '='.repeat(80));
 console.log('EXPRESS 4 VS EXPRESS 5 PERFORMANCE COMPARISON');
@@ -64,13 +99,10 @@ async function runBenchmarksForVersion(version, label) {
 
   // Copy benchmark scripts to temp directory
   const benchmarkScripts = [
-    'hello-world.js',
-    'middleware.js',
-    'query-parsing.js',
-    'routing.js',
-    'json-response.js',
-    'request-parsing.js',
-    'config.js'
+    'ping.js',
+    'middleware-50.js',
+    'json-body.js',
+    'large-payload.js'
   ];
 
   benchmarkScripts.forEach(script => {
@@ -85,39 +117,36 @@ async function runBenchmarksForVersion(version, label) {
     }
   });
 
-  // Run a subset of benchmarks (to save time)
+  // Run benchmarks matching the article
   const quickBenchmarks = [
     {
-      name: 'hello-world',
-      script: 'hello-world.js',
-      url: 'http://localhost:3333/',
-      description: 'Basic Hello World'
+      name: 'ping',
+      script: 'ping.js',
+      url: 'http://localhost:3333/ping',
+      description: 'Ping (GET /ping) - Simplest case',
+      method: 'GET'
     },
     {
-      name: 'middleware-1',
-      script: 'middleware.js',
-      url: 'http://localhost:3333/?foo[bar]=baz',
-      env: { MW: '1' },
-      description: '1 middleware'
+      name: 'middleware-50',
+      script: 'middleware-50.js',
+      url: 'http://localhost:3333/ping',
+      description: 'Middleware x50 (GET /ping) - 50 middleware functions',
+      method: 'GET'
     },
     {
-      name: 'middleware-10',
-      script: 'middleware.js',
-      url: 'http://localhost:3333/?foo[bar]=baz',
-      env: { MW: '10' },
-      description: '10 middleware'
+      name: 'json-body',
+      script: 'json-body.js',
+      url: 'http://localhost:3333/json',
+      description: 'JSON body ~50 KB (POST /json) - JSON parsing',
+      method: 'POST',
+      bodyGenerator: generateLargeJSONPayload
     },
     {
-      name: 'query-parsing',
-      script: 'query-parsing.js',
-      url: 'http://localhost:3333/?foo=bar&baz=qux&test[nested][deep]=value&array[]=1&array[]=2',
-      description: 'Query parsing'
-    },
-    {
-      name: 'json-response',
-      script: 'json-response.js',
-      url: 'http://localhost:3333/',
-      description: 'JSON response'
+      name: 'large-payload',
+      script: 'large-payload.js',
+      url: 'http://localhost:3333/payload',
+      description: 'Response payload 100 KB (GET /payload) - Large response',
+      method: 'GET'
     }
   ];
 
@@ -136,7 +165,7 @@ async function runBenchmarksForVersion(version, label) {
 }
 
 /**
- * Run a single benchmark
+ * Run a single benchmark using autocannon (matches article methodology)
  */
 function runBenchmark(tempDir, benchmark) {
   return new Promise((resolve, reject) => {
@@ -157,44 +186,56 @@ function runBenchmark(tempDir, benchmark) {
 
     // Wait for server to start
     setTimeout(() => {
-      const wrkArgs = [
-        benchmark.url,
-        '-d', '5',
-        '-c', '100',
-        '-t', '4',
-        '--latency'
+      // Use autocannon (matching the article's methodology)
+      const autocannonArgs = [
+        'autocannon',
+        '-c', '100',           // 100 connections
+        '-d', '5',             // 5 second duration
+        benchmark.url
       ];
 
-      const wrk = spawn('wrk', wrkArgs);
+      // Add POST-specific options
+      if (benchmark.method === 'POST' && benchmark.bodyGenerator) {
+        const body = benchmark.bodyGenerator();
+        autocannonArgs.push(
+          '-m', 'POST',
+          '-H', 'Content-Type=application/json',
+          '-b', body
+        );
+      }
 
-      let wrkOutput = '';
-      wrk.stdout.on('data', (data) => {
-        wrkOutput += data.toString();
+      const autocannon = spawn('npx', autocannonArgs, {
+        cwd: tempDir
+      });
+
+      let autocannonOutput = '';
+      autocannon.stdout.on('data', (data) => {
+        autocannonOutput += data.toString();
         process.stdout.write(data);
       });
 
-      wrk.on('close', (code) => {
+      autocannon.on('close', (code) => {
         server.kill('SIGTERM');
 
         if (code !== 0) {
-          reject(new Error(`wrk exited with code ${code}`));
+          reject(new Error(`autocannon exited with code ${code}`));
           return;
         }
 
-        // Parse results
-        const reqSecMatch = wrkOutput.match(/Requests\/sec:\s+(\d+\.\d+)/);
-        const latencyMatch = wrkOutput.match(/Latency\s+(\d+\.\d+)(\w+)/);
+        // Parse autocannon results
+        const reqSecMatch = autocannonOutput.match(/Req\/Sec[^\d]+(\d+)/);
+        const latencyMatch = autocannonOutput.match(/Latency[^\d]+(\d+)/);
 
         const result = {
           benchmark: benchmark.name,
           description: benchmark.description,
           requests_per_sec: reqSecMatch ? parseFloat(reqSecMatch[1]) : 0,
           latency: latencyMatch ? parseFloat(latencyMatch[1]) : 0,
-          latency_unit: latencyMatch ? latencyMatch[2] : 'ms'
+          latency_unit: 'ms'
         };
 
         console.log(`Requests/sec: ${result.requests_per_sec.toFixed(2)}`);
-        console.log(`Latency: ${result.latency}${result.latency_unit}`);
+        console.log(`Latency: ${result.latency}ms`);
 
         resolve(result);
       });

@@ -1,5 +1,6 @@
 /**
- * Simple "Hello World" benchmark - minimal overhead test
+ * Hello World benchmark - minimal overhead test
+ * Tests the absolute minimum Express can do
  */
 
 const express = require('..');
