@@ -120,11 +120,84 @@ make > results.log
 
 ### Run benchmarks on different Node.js versions
 
+Using nvm (Node Version Manager):
+
 ```bash
-# Using nvm
-nvm use 20 && node compare-versions.js
-nvm use 24 && node compare-versions.js
+# Install Node.js 24 (if not already installed)
+nvm install 24
+
+# Test on Node 20
+nvm use 20
+cd benchmarks
+node compare-versions.js
+node micro-benchmarks.js
+
+# Test on Node 24
+nvm use 24
+cd benchmarks
+node compare-versions.js
+node micro-benchmarks.js
+
+# Compare results in the results/ directory
 ```
+
+Or using n (Node version manager):
+
+```bash
+# Install and use Node 24
+n 24
+cd benchmarks
+node compare-versions.js
+```
+
+### Analyze Performance Bottlenecks
+
+Run static code analysis to identify potential bottlenecks:
+
+```bash
+cd benchmarks
+node analyze-bottlenecks.js
+```
+
+This will generate a detailed analysis report in `results/analysis_TIMESTAMP.json`.
+
+### Run Micro-benchmarks
+
+Test specific operations in isolation:
+
+```bash
+cd benchmarks
+node micro-benchmarks.js
+```
+
+This runs detailed benchmarks for:
+- Query string parsing (qs vs querystring)
+- Buffer operations
+- Object creation patterns
+- Status code validation
+- JSON operations
+
+### CPU Profiling
+
+Profile Express applications to identify CPU bottlenecks:
+
+```bash
+cd benchmarks
+node profile-cpu.js
+```
+
+This generates CPU profiles in `profiles/` directory that can be analyzed in Chrome DevTools.
+
+## Results and Analysis
+
+See [FINDINGS.md](FINDINGS.md) for a detailed analysis of performance bottlenecks identified in Express 5, including:
+- Query string parsing performance (qs is 6-7x slower than built-in)
+- Object creation patterns (Object.create(null) is 10x slower than {})
+- Status code validation overhead (5x slower with strict validation)
+- Request property lazy evaluation without caching
+- Recommendations for optimization
+
+Key findings show that the main performance bottleneck is the `qs` library for query parsing, which is significantly slower than Node.js built-in `querystring.parse()`.
 
 ### Quick single benchmark
 
