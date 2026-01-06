@@ -1,0 +1,7 @@
+# Ignore benchmark results and temporary files
+results/
+temp/
+profiles/
+*.log
+*.cpuprofile
+node_modules/
