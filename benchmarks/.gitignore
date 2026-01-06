@@ -1,0 +1,5 @@
+# Ignore benchmark results and temporary files
+results/
+temp/
+*.log
+node_modules/
